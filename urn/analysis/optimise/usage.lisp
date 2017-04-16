@@ -64,7 +64,7 @@
                 ;; Obviously don't remove values which have an effect
                 [(side-effect? val)]
                 ;; And keep values which are actually used
-                [(> (# (.> (usage/get-var lookup (.> arg :var)) :usages)) 0)]
+                [(.> (usage/get-var lookup (.> arg :var)) :active)]
                 ;; So remove things which aren't used and have no side effects.
                 [true
                   (changed!)
