@@ -104,7 +104,7 @@
                                       ;; And define as a normal argument
                                       (add-var-def! (.> arg :var) arg)
                                       (for j 1 count 1
-                                        (with (elem (nth head (+ i j)))
+                                        (with (elem (nth node (+ i j)))
                                           (if (side-effect? elem)
                                             (push-cdr! (.> (get-var state (.> arg :var)) :lazy-defs) elem)
                                             ;; (push-cdr! queue { :var (.> arg :var) :val elem })
