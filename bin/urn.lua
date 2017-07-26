@@ -28,6 +28,7 @@ pcall1 = pcall
 print1 = print
 getIdx1 = function(v1, v2) return v1[v2] end
 setIdx_21_1 = function(v1, v2, v3) v1[v2] = v3 end
+require1 = require
 setmetatable1 = setmetatable
 tonumber1 = tonumber
 tostring1 = tostring
@@ -161,6 +162,33 @@ constVal1 = (function(val)
 		return val
 	end
 end)
+apply1 = (function(f, ...)
+	local _n = _select("#", ...) - 1
+	local xss, xs
+	if _n > 0 then
+		xss = { tag="list", n=_n, _unpack(_pack(...), 1, _n)}
+		xs = select(_n + 1, ...)
+	else
+		xss = { tag="list", n=0}
+		xs = ...
+	end
+	local args = (function()
+		local _offset, _result, _temp = 0, {tag="list",n=0}
+		_temp = xss
+		for _c = 1, _temp.n do _result[0 + _c + _offset] = _temp[_c] end
+		_offset = _offset + _temp.n
+		_temp = xs
+		for _c = 1, _temp.n do _result[0 + _c + _offset] = _temp[_c] end
+		_offset = _offset + _temp.n
+		_result.n = _offset + 0
+		return _result
+	end)()
+	return f(unpack1(args, 1, n1(args)))
+end)
+first1 = (function(...)
+	local rest = _pack(...) rest.tag = "list"
+	return rest[1]
+end)
 empty_3f_1 = (function(x)
 	local xt = type1(x)
 	if xt == "list" then
@@ -208,7 +236,7 @@ eq_3f_1 = (function(x, y)
 			end
 			return equal
 		elseif "table" == type_23_1(x) and getmetatable1(x) then
-			return getmetatable1(x)["compare"](x, y)
+			return getmetatable1(x)["--compare"](x, y)
 		elseif "table" == typeX and "table" == typeY then
 			local equal = true
 			local temp, v = next1(x)
@@ -298,17 +326,15 @@ map1 = (function(fn, ...)
 	end
 	ns = out
 	local out = ({tag = "list", n = 0})
-	local temp = min1(unpack1(ns, 1, n1(ns)))
+	local temp = apply1(min1, ns)
 	local temp1 = 1
 	while temp1 <= temp do
-		pushCdr_21_1(out, (function(xs)
-			return fn(unpack1(xs, 1, n1(xs)))
-		end)(nths1(xss, temp1)))
+		pushCdr_21_1(out, apply1(fn, nths1(xss, temp1)))
 		temp1 = temp1 + 1
 	end
 	return out
 end)
-filter1 = (function(p, xs)
+partition1 = (function(p, xs)
 	local temp = type1(p)
 	if temp ~= "function" then
 		error1(format1("bad argument %s (expected %s, got %s)", "p", "function", temp), 2)
@@ -317,17 +343,21 @@ filter1 = (function(p, xs)
 	if temp ~= "list" then
 		error1(format1("bad argument %s (expected %s, got %s)", "xs", "list", temp), 2)
 	end
-	local out = ({tag = "list", n = 0})
+	local passed, failed = ({tag = "list", n = 0}), ({tag = "list", n = 0})
 	local temp = n1(xs)
 	local temp1 = 1
 	while temp1 <= temp do
 		local x = nth1(xs, temp1)
-		if p(x) then
-			pushCdr_21_1(out, x)
-		end
+		pushCdr_21_1((function()
+			if p(x) then
+				return passed
+			else
+				return failed
+			end
+		end)(), x)
 		temp1 = temp1 + 1
 	end
-	return out
+	return unpack1(list1(passed, failed), 1, 2)
 end)
 any1 = (function(p, xs)
 	local temp = type1(p)
@@ -5735,27 +5765,17 @@ config1 = package.config
 coloredAnsi1 = (function(col, msg)
 	return "\27[" .. col .. "m" .. msg .. "\27[0m"
 end)
-if config1 and sub1(config1, 1, 1) ~= "\\" then
+local term = lower1(getenv1("TERM") or "")
+if term == "dumb" then
+	colored_3f_1 = false
+elseif find1(term, "xterm") then
+	colored_3f_1 = true
+elseif config1 and sub1(config1, 1, 1) == "/" then
 	colored_3f_1 = true
 elseif getenv1 and getenv1("ANSICON") ~= nil then
 	colored_3f_1 = true
 else
-	local temp
-	if getenv1 then
-		local term = getenv1("TERM")
-		if term then
-			temp = find1(term, "xterm")
-		else
-			temp = nil
-		end
-	else
-		temp = false
-	end
-	if temp then
-		colored_3f_1 = true
-	else
-		colored_3f_1 = false
-	end
+	colored_3f_1 = false
 end
 if colored_3f_1 then
 	colored1 = coloredAnsi1
@@ -6987,9 +7007,9 @@ compile1 = (function(compiler, nodes, scope, name)
 					end))
 					local elems
 					local temp3
-					local xs = filter1((function(x)
+					local xs = first1(partition1((function(x)
 						return distances[x] <= 0.5
-					end), varDis)
+					end), varDis))
 					temp3 = slice1(xs, 1, min1(5, n1(xs)))
 					elems = map1((function(temp4)
 						return colored1("1;32", temp4)
@@ -7026,6 +7046,45 @@ compile1 = (function(compiler, nodes, scope, name)
 		stopTimer_21_1(timer, name)
 	end
 	return unpack1(list1(map1(on1("node"), states), states))
+end)
+local read = nil
+readLine_21_1 = (function(prompt, initial, complete)
+	if not read then
+		local ffiOk, ffi = pcall1(require1, "ffi")
+		if ffiOk then
+			local readline = ffi["load"]("readline")
+			ffi["cdef"]("// Required to allocate strings for completions\nvoid* malloc(size_t bytes);\n// Required to free strings returned by readline\nvoid free(void *);\n// Read a line with the given prompt\nchar *readline (const char *prompt);\n// Add a line to the history\nvoid add_history(const char *line);\n// Hooks\ntypedef int rl_hook_func_t (void);\nrl_hook_func_t *rl_startup_hook;\n\nint rl_insert_text (const char *text);")
+			local currentInitial, previous = "", ""
+			readline["rl_startup_hook"] = (function()
+				if n1(currentInitial) > 0 then
+					readline["rl_insert_text"](currentInitial)
+				end
+				return 0
+			end)
+			read = (function(prompt1, initial1, complete1)
+				currentInitial = initial1 or ""
+				local res = readline["readline"](prompt1)
+				if res == nil then
+					return nil
+				else
+					local str = ffi["string"](res)
+					if find1(str, "%S") and previous ~= str then
+						previous = str
+						readline["add_history"](res)
+					end
+					ffi["C"]["free"](res)
+					return str
+				end
+			end)
+		else
+			read = (function(prompt1, initial1, complete1)
+				write1(prompt1)
+				flush1()
+				return read1("*l")
+			end)
+		end
+	end
+	return read(prompt, initial, complete)
 end)
 requiresInput1 = (function(str)
 	local temp = list1(pcall1((function()
@@ -7317,15 +7376,13 @@ end)
 repl1 = (function(compiler)
 	local scope, logger, buffer, running = compiler["root-scope"], compiler["log"], "", true
 	while running do
-		write1(colored1(92, (function()
+		local line = readLine_21_1(colored1(92, (function()
 			if empty_3f_1(buffer) then
 				return "> "
 			else
 				return ". "
 			end
 		end)()))
-		flush1()
-		local line = read1("*l")
 		if not line and empty_3f_1(buffer) then
 			running = false
 		else
@@ -7750,13 +7807,14 @@ task3 = ({["name"]="gen-native",["setup"]=(function(spec)
 end),["pred"]=(function(args)
 	return args["gen-native"]
 end),["run"]=genNative1})
+pathEscape1 = ({["?"]="(.*)",["."]="%.",["%"]="%%",["^"]="%^",["$"]="%$",["+"]="%+",["-"]="%-",["*"]="%*",["["]="%[",["]"]="%]",["("]="%)",[")"]="%)"})
 simplifyPath1 = (function(path, paths)
 	local current = path
 	local temp = n1(paths)
 	local temp1 = 1
 	while temp1 <= temp do
 		local search = paths[temp1]
-		local sub = match1(path, "^" .. gsub1(search, "%?", "(.*)") .. "$")
+		local sub = match1(path, "^" .. gsub1(search, ".", pathEscape1) .. "$")
 		if sub and n1(sub) < n1(current) then
 			current = sub
 		end
@@ -8160,7 +8218,7 @@ createPluginState1 = (function(compiler)
 		pass["run"] = (function(...)
 			local args = _pack(...) args.tag = "list"
 			local temp = list1(xpcall1((function()
-				return func(unpack1(args, 1, n1(args)))
+				return apply1(func, args)
 			end), traceback1))
 			if type1(temp) == "list" and (n1(temp) >= 2 and (n1(temp) <= 2 and (eq_3f_1(nth1(temp, 1), false) and true))) then
 				local msg = nth1(temp, 2)
@@ -8250,22 +8308,25 @@ createPluginState1 = (function(compiler)
 		return var["doc"]
 	end)})
 end)
+normalisePath1 = (function(path, trailing)
+	path = gsub1(path, "\\", "/")
+	if trailing and (path ~= "" and sub1(path, -1, -1) ~= "/") then
+		path = path .. "/"
+	end
+	while sub1(path, 1, 2) == "./" do
+		path = sub1(path, 3)
+	end
+	return path
+end)
 local spec = create1()
 local directory
-local dir = nth1(arg1, 0)
-dir = gsub1(dir, "\\", "/")
-dir = gsub1(dir, "urn/cli%.lisp$", "")
-dir = gsub1(dir, "urn/cli$", "")
-dir = gsub1(dir, "bin/urn%.lua$", "")
-dir = gsub1(dir, "bin/urn$", "")
-if dir ~= "" and sub1(dir, -1, -1) ~= "/" then
-	dir = dir .. "/"
+local dir = getenv1("URN_STDLIB")
+if dir then
+	directory = normalisePath1(dir, true)
+else
+	directory = normalisePath1(gsub1(gsub1(gsub1(gsub1(arg1[0], "urn[/\\]cli%.lisp$", ""), "urn[/\\]cli$", ""), "bin[/\\]urn%.lua$", ""), "bin[/\\]urn$", ""), true) .. "lib/"
 end
-while sub1(dir, 1, 2) == "./" do
-	dir = sub1(dir, 3)
-end
-directory = dir
-local paths, tasks = list1("?", "?/init", directory .. "lib/?", directory .. "lib/?/init"), list1(warning1, optimise2, emitLisp1, emitLua1, task1, task3, task2, execTask1, replTask1)
+local paths, tasks = list1("?", "?/init", directory .. "?", directory .. "?/init"), list1(warning1, optimise2, emitLisp1, emitLua1, task1, task3, task2, execTask1, replTask1)
 addHelp_21_1(spec)
 addArgument_21_1(spec, ({tag = "list", n = 2, "--explain", "-e"}), "help", "Explain error messages in more detail.")
 addArgument_21_1(spec, ({tag = "list", n = 2, "--time", "-t"}), "help", "Time how long each task takes to execute. Multiple usages will show more detailed timings.", "many", true, "default", 0, "action", (function(arg, data)
@@ -8277,8 +8338,11 @@ addArgument_21_1(spec, ({tag = "list", n = 2, "--verbose", "-v"}), "help", "Make
 	return nil
 end))
 addArgument_21_1(spec, ({tag = "list", n = 2, "--include", "-i"}), "help", "Add an additional argument to the include path.", "many", true, "narg", 1, "default", ({tag = "list", n = 0}), "action", addAction1)
-addArgument_21_1(spec, ({tag = "list", n = 2, "--prelude", "-p"}), "help", "A custom prelude path to use.", "narg", 1, "default", directory .. "lib/prelude")
-addArgument_21_1(spec, ({tag = "list", n = 3, "--output", "--out", "-o"}), "help", "The destination to output to.", "narg", 1, "default", "out")
+addArgument_21_1(spec, ({tag = "list", n = 2, "--prelude", "-p"}), "help", "A custom prelude path to use.", "narg", 1, "default", directory .. "prelude")
+addArgument_21_1(spec, ({tag = "list", n = 3, "--output", "--out", "-o"}), "help", "The destination to output to.", "narg", 1, "default", "out", "action", (function(arg, data, value)
+	data[arg["name"]] = gsub1(value, "%.lua$", "")
+	return nil
+end))
 addArgument_21_1(spec, ({tag = "list", n = 2, "--wrapper", "-w"}), "help", "A wrapper script to launch Urn with", "narg", 1, "action", (function(a, b, value)
 	local args, i = map1(id1, arg1), 1
 	local len = n1(args)
@@ -8328,8 +8392,7 @@ local temp1 = n1(temp)
 local temp2 = 1
 while temp2 <= temp1 do
 	local path = temp[temp2]
-	path = gsub1(path, "\\", "/")
-	path = gsub1(path, "^%./", "")
+	path = normalisePath1(path, false)
 	if not find1(path, "%?") then
 		path = path .. (function()
 			if sub1(path, -1, -1) == "/" then

@@ -18,17 +18,82 @@
 (import urn/resolve/scope scope)
 (import urn/resolve/state state)
 
+(define read-line!
+  "Read a line with the given PROMPT. Provides an INITIAL string and a
+   function to COMPLETE partial strings if supported."
+  :hidden
+  (with (read nil)
+    (lambda (prompt initial complete)
+      (unless read
+        (set! read
+          (with ((ffi-ok ffi) (pcall require "ffi"))
+            (if ffi-ok
+              (with (readline ((.> ffi :load) "readline"))
+                ((.> ffi :cdef) "// Required to allocate strings for completions
+                                 void* malloc(size_t bytes);
+                                 // Required to free strings returned by readline
+                                 void free(void *);
+                                 // Read a line with the given prompt
+                                 char *readline (const char *prompt);
+                                 // Add a line to the history
+                                 void add_history(const char *line);
+                                 // Hooks
+                                 typedef int rl_hook_func_t (void);
+                                 rl_hook_func_t *rl_startup_hook;
+
+                                 int rl_insert_text (const char *text);")
+                (let* [(current-initial "")
+                       (previous "")]
+                  (.<! readline :rl_startup_hook
+                    (lambda ()
+                      (when (> (n current-initial) 0) ((.> readline :rl_insert_text) current-initial))
+                      0))
+
+                  (lambda (prompt initial complete)
+                    (set! current-initial (or initial ""))
+                    (with (res ((.> readline :readline) prompt))
+                      (if (= res nil)
+                        nil
+                        (with (str ((.> ffi :string) res))
+                          (when (and (string/find str "%S") (/= previous str))
+                            (set! previous str)
+                            ((.> readline :add_history) res))
+                          ((.> ffi :C :free) res)
+                          str))))))
+              (lambda (prompt initial complete)
+                (io/write prompt)
+                (io/flush)
+                (io/read "*l"))))))
+      (read prompt initial complete))))
+
 (defun requires-input (str)
   "Determine whether STR requires additional input (such as quotes or parens).
    The returns false if no input is required, and nil if a syntax error occured."
+  :hidden
   (case (list (pcall (lambda()
                        (parser/parse
                          void/void
                          (parser/lex void/void str "<stdin>" true)
                          true))))
     [(true _) false]
-    [(false (table? @ ?x)) (if (.> x :cont) true false)]
-    [(false ?x) (debug x) nil]))
+    [(false (table? @ ?x)) (if (.> x :context) true false)]
+    [(false ?x) nil]))
+
+(defun get-indent (str)
+  "Determines the indent required for STR.
+
+   This simply lexes the string and counts the opening and closing parens."
+  :hidden
+  (let [(toks (case (list (pcall parser/lex void/void str "<stdin>" true))
+                [(true ?x) x]
+                [(false (table? @ ?x)) (or (.> x :tokens) '())]))
+        (indent 0)]
+    (for-each tok toks
+      (case (.> tok :tag)
+        ["open" (inc! indent)]
+        ["close" (dec! indent)]
+        [_]))
+    (string/rep "  " indent)))
 
 (defun do-resolve (compiler scope str)
   :hidden
@@ -249,10 +314,9 @@
          (buffer "")
          (running true)]
     (while running
-      (io/write (colored 92 (if (empty? buffer) "> " ". ")))
-      (io/flush)
-
-      (with (line (io/read "*l"))
+      (with (line (read-line!
+                    (colored 92 (if (empty? buffer) "> " ". "))
+                    (get-indent buffer)))
         (cond
           ;; If we got no input, then exit the REPL
           [(and (! line) (empty? buffer)) (set! running false)]
