@@ -179,22 +179,22 @@
                            ;; Other leading "#"s are illegal
                            [(and (= char "#") (terminator? (string/lower (string/char-at str (succ offset)))))
                             (logger/do-node-error! logger
-                              "Expected hexadecimal (#x), binary (#b), or Roman (#r) digit."
+                              "Expected hexadecimal (#x), binary (#b), or Roman (#r) digit specifier."
                               (range (position))
                               "The '#' character is used for various number representations, such as binary
                                and hexadecimal digits.
 
                                If you're looking for the '#' function, this has been replaced with 'n'. We
                                apologise for the inconvenience."
-                              (range (position)) "# must be followed by x or b")]
+                              (range (position)) "# must be followed by x, b or r")]
                            [(= char "#")
                             (consume!)
                             (logger/do-node-error! logger
-                              "Expected hexadecimal (#x) or binary (#b) digit specifier."
+                              "Expected hexadecimal (#x), binary (#b), or Roman (#r) digit specifier."
                               (range (position))
-                              "The '#' character is used for various number representations, namely binary
-                               and hexadecimal digits."
-                              (range (position)) "# must be followed by x or b")]
+                              "The '#' character is used for various number representations, namely binary,
+                               hexadecimal and roman numbers."
+                              (range (position)) "# must be followed by x, b or r")]
                            [true
                             ;; Parse leading digits
                             (while (between? (string/char-at str (succ offset))  "0" "9")
